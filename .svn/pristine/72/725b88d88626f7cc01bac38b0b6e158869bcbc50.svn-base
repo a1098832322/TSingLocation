@@ -1,0 +1,115 @@
+package com.dsw.adapters;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.FlowLayout;
+
+import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JPanel;
+import javax.swing.border.EmptyBorder;
+
+import com.dsw.config.Config;
+import com.dsw.httpclient.OkhttpClient;
+import com.zl.jydam.controller.AlarmListener;
+
+import java.awt.Font;
+import java.awt.Frame;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+
+import javax.swing.JList;
+import javax.swing.JScrollPane;
+
+/**
+ * 这是一个自定义的警示提醒控制台的Adapter
+ * 
+ * @author 郑龙
+ *
+ */
+public class WarnMessageConsoleAdapter extends JDialog {
+	private static ListAdapter list;
+	private static WarnMessageConsoleAdapter dialog = new WarnMessageConsoleAdapter();
+
+	/**
+	 * 显示警告提示控制台（非模态，但一次仅能显示一个出来）
+	 * 
+	 * @param frame
+	 * @param title
+	 * @param isMod
+	 * @return WarnMessageConsoleAdapter 控制台Dialog（非模态）
+	 */
+	public static WarnMessageConsoleAdapter getInstanceDialog(Frame frame, String title, boolean isMod) {
+		dialog.dispose();// 如果已经创建了实例，则先消除实例
+		dialog = new WarnMessageConsoleAdapter(frame, title, isMod);
+		return dialog;
+	}
+
+	/**
+	 * 单例设计模式，私有化构造方法
+	 */
+	private WarnMessageConsoleAdapter() {
+
+	}
+
+	/**
+	 * Create the dialog.
+	 */
+	private WarnMessageConsoleAdapter(Frame frame, String title, boolean isMod) {
+		super(frame, title, isMod);
+		setBounds(100, 100, 445, 805);
+		setResizable(false);// 不可改变大小
+		getContentPane().setLayout(null);
+		{
+			JPanel buttonPane = new JPanel();
+			buttonPane.setBounds(0, 726, 434, 40);
+			buttonPane.setLayout(new FlowLayout(FlowLayout.RIGHT));
+			getContentPane().add(buttonPane);
+			{
+				JButton shutdownAlarmButton = new JButton("关闭警报");
+				shutdownAlarmButton.setBackground(Color.CYAN);
+				shutdownAlarmButton.setFont(new Font("微软雅黑", Font.PLAIN, 12));
+				shutdownAlarmButton.addMouseListener(new MouseAdapter() {
+					@Override
+					public void mouseClicked(MouseEvent e) {
+						// 方式1：使用服务器部署的驱动包，通过发送url连接请求来关闭警报器
+						// OkhttpClient mClient = new OkhttpClient();// 实例化对象
+						// mClient.shutdownAlarm();// 关闭警报
+
+						// 方式2：使用自有的继电器板驱动包停止警报
+						// OkhttpClient mClient = new OkhttpClient();// 实例化对象
+						// mClient.shutdownAlarm(Config.getInstance().getReal_alarm_ip(),
+						// Config.getInstance().getReal_alarm_port(),
+						// Config.getInstance().getReal_alarm_index());
+
+						// 方法3：使用专门的警报线程关闭警报
+						AlarmListener listener = new AlarmListener();
+						listener.sendMessage(Config.getInstance().getReal_alarm_ip(), 10000,
+								Integer.parseInt(Config.getInstance().getReal_alarm_index()), 0, false);
+					}
+				});
+				shutdownAlarmButton.setActionCommand("ok");
+				buttonPane.add(shutdownAlarmButton);
+
+				JButton cancelButton = new JButton("关闭窗口");
+				cancelButton.setFont(new Font("微软雅黑", Font.PLAIN, 12));
+				cancelButton.addMouseListener(new MouseAdapter() {
+					@Override
+					public void mouseClicked(MouseEvent e) {
+						dispose();
+					}
+				});
+				cancelButton.setActionCommand("Cancel");
+				buttonPane.add(cancelButton);
+			}
+		}
+
+		JScrollPane scrollPane = new JScrollPane();
+		scrollPane.setBounds(0, 0, 434, 717);
+		getContentPane().add(scrollPane);
+
+		list = ListAdapter.getInstanceListAdapter();
+		list.setFont(new Font("微软雅黑", Font.PLAIN, 12));
+		scrollPane.setViewportView(list);
+	}
+}

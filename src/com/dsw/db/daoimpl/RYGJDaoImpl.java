@@ -1,0 +1,207 @@
+package com.dsw.db.daoimpl;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Scanner;
+
+import com.dsw.bean.Point;
+import com.dsw.db.connection.DBConnection;
+import com.dsw.db.dao.RYGJDao;
+
+/**
+ * dao类实现
+ *
+ * @author 郑龙
+ */
+public class RYGJDaoImpl implements RYGJDao {
+	private static final int NEXT_ALARM_TIME_SECOND = 10;// 插入预警表的时间间隔
+
+	public static RYGJDaoImpl dao = new RYGJDaoImpl();
+
+	private RYGJDaoImpl() {
+	}
+
+	/**
+	 * 单例
+	 *
+	 * @return RYGJDaoImpl
+	 */
+	public static RYGJDaoImpl getInstance() {
+		return dao;
+	}
+
+	@Override
+	public int insertGJ(String SBID, String roomName) {
+		String lastRoomName = null;
+		ResultSet rs = null;
+		PreparedStatement ps = null;
+		Connection conn = null;
+		int flag = 0;
+		conn = DBConnection.getConnection();
+
+		try {
+			// 先查手环表里面有无这个数据
+			ps = conn.prepareStatement(
+					"select activate from tp_card where dwcard =" + SBID + " ORDER BY id DESC LIMIT 1 ");
+			rs = ps.executeQuery();
+			if (rs.next()) {
+				// 如果tp_card表中有定位手环数据
+				int activateType = rs.getInt("activate");
+				if (activateType == 0) {
+					// 如果tp_card表中手环状态为未激活状态
+					// System.out.println("数据表中未激活手环:" + SBID);
+				} else if (activateType == 1) {
+					try {
+
+						/* 先查询数据 */
+						ps = conn.prepareStatement(
+								"select roomname from tp_adr where sbid=" + SBID + " ORDER BY id DESC LIMIT 1 ");
+						rs = ps.executeQuery();
+						while (rs.next()) {
+							lastRoomName = rs.getString("roomname");
+							// System.out.println("------------------------------------------------------id:\t"
+							// + SBID
+							// + "\troom:\t" + lastRoomName + "\t" + roomName);
+						}
+
+						if (lastRoomName == null) {
+
+							// 如果查询结果为空，则证明第一次来到这个房间，则直接插入数据
+							ps = conn.prepareStatement("insert into tp_adr(sbid,roomname,intime) values(?,?,?)");
+							ps.setString(1, SBID);
+							ps.setString(2, roomName);
+							ps.setString(3, new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+							flag = ps.executeUpdate();
+							// 关闭连接
+							DBConnection.freeConnection(rs, ps, conn);
+						} else {
+							if (!roomName.equals(lastRoomName)) {
+								ps = conn.prepareStatement("insert into tp_adr(sbid,roomname,intime) values(?,?,?)");
+								ps.setString(1, SBID);
+								ps.setString(2, roomName);
+								ps.setString(3, new SimpleDateFormat("yyyy-MM-dd HH:mm:s").format(new Date()));
+								flag = ps.executeUpdate();
+								// 关闭连接
+								DBConnection.freeConnection(rs, ps, conn);
+							} else {
+								DBConnection.freeConnection(rs, ps, conn);
+							}
+						}
+
+					} catch (SQLException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+		} catch (SQLException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		} finally {
+			DBConnection.freeConnection(rs, ps, conn);
+		}
+
+		return flag;
+	}
+
+	@Override
+	public int insertYJ(String tagID, String org, String grade, String reason, String status, String msg)
+			throws SQLException {
+		int flag = 0;
+		ResultSet rs = null;
+		PreparedStatement ps = null;
+		Connection conn = null;
+		String lastTime = "1900-01-01 00:00:00";// 初始化默认一个特别小的时间
+
+		// 先查数据
+		try {
+			conn = DBConnection.getConnection();
+			ps = conn.prepareStatement(
+					"select activate from tp_card where dwcard =" + tagID + " ORDER BY id DESC LIMIT 1 ");
+			rs = ps.executeQuery();
+			if (rs.next()) {
+				// 如果tp_card表中有定位手环数据
+				int activateType = rs.getInt("activate");
+				if (activateType == 0) {
+					// 如果tp_card表中手环状态为未激活状态
+					// System.out.println("数据表中未激活手环:" + tagID);
+				} else if (activateType == 1) {
+					// 如果tp_card表中手环状态为激活状态
+
+					/* 先查询人员轨迹表数据 */
+					ps = conn.prepareStatement(
+							"select alarm_date from tp_yjgl where sbid=" + tagID + " ORDER BY id DESC LIMIT 1 ");
+					rs = ps.executeQuery();
+					if (rs.next()) {
+						// 如果存在记录，则判断与上条数据的时间间隔
+						lastTime = rs.getString("alarm_date");
+						System.out.println("上条记录时间:" + lastTime);
+						if (calcTime(lastTime, new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+								.format(new Date())) >= NEXT_ALARM_TIME_SECOND) {
+							// 如果时间间隔大于30秒，则插入新数据
+							ps = conn.prepareStatement(
+									"insert into tp_yjgl(sbid,dept,alarm_grade,alarm_reason,alarm_date,alarm_status,message) values(?,?,?,?,?,?,?)");
+							ps.setString(1, tagID);
+							ps.setString(2, org);
+							ps.setString(3, grade);
+							ps.setString(4, reason);
+							ps.setString(5, new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+							ps.setString(6, status);
+							ps.setString(7, msg);
+							flag = ps.executeUpdate();
+							DBConnection.freeConnection(rs, ps, conn);
+						}
+					} else {
+						// 如果不存在数据，则直接插入数据
+						ps = conn.prepareStatement(
+								"insert into tp_yjgl(sbid,dept,alarm_grade,alarm_reason,alarm_date,alarm_status,message) values(?,?,?,?,?,?,?)");
+						ps.setString(1, tagID);
+						ps.setString(2, org);
+						ps.setString(3, grade);
+						ps.setString(4, reason);
+						ps.setString(5, new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+						ps.setString(6, status);
+						ps.setString(7, msg);
+						flag = ps.executeUpdate();
+						DBConnection.freeConnection(rs, ps, conn);
+					}
+				}
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} finally {
+			DBConnection.freeConnection(rs, ps, conn);
+		}
+		return flag;
+	}
+
+	/**
+	 * 计算时间差的方法，防止预警表中数据量爆炸，因此设置每隔30秒插入下一条重复の预警
+	 *
+	 * @return 时间差（秒）
+	 */
+	private int calcTime(String lastTime, String nowTime) {
+		SimpleDateFormat simpleFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");// 如2017-11-17
+		// 20:40:05
+		long from, to;
+		int second = -1;
+		try {
+			from = simpleFormat.parse(lastTime).getTime();
+			to = simpleFormat.parse(nowTime).getTime();
+			second = (int) ((to - from) / 1000);
+		} catch (ParseException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		System.out.println("\t" + (NEXT_ALARM_TIME_SECOND - second) + "秒后插入下一条记录");
+		return second;
+
+	}
+
+}
